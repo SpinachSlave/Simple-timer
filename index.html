@@ -130,11 +130,25 @@ document.addEventListener("keydown",(e)=>{
 });
 
 // ===== 공용 =====
-function saveData(){
-  localStorage.setItem("farmData",JSON.stringify(columns));
-localStorage.setItem("taskData",JSON.stringify(tasks));
-  alert("저장 완료");
+import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+async function saveData(){
+  // 로컬Storage 저장은 유지해도 됨
+  localStorage.setItem("farmData", JSON.stringify(columns));
+  localStorage.setItem("taskData", JSON.stringify(tasks));
+
+  try {
+    await setDoc(doc(db, "farmData", "board"), {
+      columns: columns,
+      tasks: tasks
+    });
+    alert("Firestore 저장 완료 ✅");
+  } catch (e) {
+    console.error("Firestore 저장 오류:", e);
+    alert("Firestore 저장 실패 ❌");
+  }
 }
+
 
 
 function formatDate(d){
@@ -774,7 +788,7 @@ updateClock();
 </script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyAnfstiWWezjQY4YJ3YJae8tsTGb3s9F-k",
@@ -788,11 +802,31 @@ updateClock();
 
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
-
   console.log("🔥 Firebase 연결 완료");
+
+  // ===== 공용 saveData() =====
+  window.saveData = async function() {
+    // 1️⃣ 로컬Storage 저장
+    localStorage.setItem("farmData", JSON.stringify(columns));
+    localStorage.setItem("taskData", JSON.stringify(tasks));
+
+    // 2️⃣ Firestore 저장
+    try {
+      await setDoc(doc(db, "farmData", "board"), {
+        columns: columns,
+        tasks: tasks
+      });
+      alert("Firestore 저장 완료 ✅");
+    } catch (e) {
+      console.error("Firestore 저장 오류:", e);
+      alert("Firestore 저장 실패 ❌");
+    }
+  }
 </script>
+
 
 </body>
 </html>
+
 
 
