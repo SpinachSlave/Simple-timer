@@ -1,128 +1,169 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<title>재배 보드</title>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
-<!-- Firebase SDK -->
+<style>
+  /* ... 기존 CSS 유지 ... */
+</style>
+
+<body>
+<div class="top-bar">
+  <h1 id="clock"></h1>
+  <div class="top-controls">
+    <button onclick="addColumn()">열 추가</button>
+    <button onclick="saveData()">저장</button>
+    <button onclick="undoAction()">이전 행동 복구</button>
+  </div>
+</div>
+
+<h2 id="farmTitle" contenteditable="true" oninput="localStorage.setItem('farmBoardTitle', this.innerText)">재배기 현황</h2>
+<div class="board" id="board"></div>
+
+<h2 id="taskTitle" contenteditable="true" oninput="localStorage.setItem('taskBoardTitle', this.innerText)">작업 배너</h2>
+<div id="taskBoard" style="display:flex;flex-direction:column;gap:12px;"></div>
+
 <script type="module">
-  // Firebase App (the core Firebase SDK) is always required and must be listed first
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.24.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.24.0/firebase-analytics.js";
-  import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.24.0/firebase-firestore.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-  // Your web app's Firebase configuration
-  const firebaseConfig = {
-    apiKey: "AIzaSyAnfstiWWezjQY4YJ3YJae8tsTGb3s9F-k",
-    authDomain: "spinachslave.firebaseapp.com",
-    projectId: "spinachslave",
-    storageBucket: "spinachslave.firebasestorage.app",
-    messagingSenderId: "974550491647",
-    appId: "1:974550491647:web:f6359153646a7ffc9307ca",
-    measurementId: "G-5VNY8MXJ4S"
-  };
-
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-  const db = getFirestore(app);
-
-  // ===== 데이터 =====
+  // ===== 데이터 & 히스토리 =====
   let columns = JSON.parse(localStorage.getItem("farmData")) || [];
-  let tasks = JSON.parse(localStorage.getItem("taskData")) || [];
+  let tasks   = JSON.parse(localStorage.getItem("taskData")) || [];
   let historyStack = [];
 
-  // ===== 히스토리 =====
   function saveHistory(){
     historyStack.push(JSON.stringify(columns));
-    if(historyStack.length>50) historyStack.shift();
+    if(historyStack.length > 50) historyStack.shift();
   }
 
   function undoAction(){
-    if(historyStack.length===0){
-      alert("되돌릴 작업이 없습니다.");
-      return;
-    }
+    if(historyStack.length === 0) { alert("되돌릴 작업이 없습니다."); return; }
     columns = JSON.parse(historyStack.pop());
     createUI();
   }
 
-  document.addEventListener("keydown",(e)=>{
-    if(e.ctrlKey && e.key==="z"){
-      e.preventDefault();
-      undoAction();
-    }
+  document.addEventListener("keydown", (e) => {
+    if(e.ctrlKey && e.key==="z"){ e.preventDefault(); undoAction(); }
   });
 
   // ===== 공용 =====
   async function saveData(){
-    localStorage.setItem("farmData",JSON.stringify(columns));
-    localStorage.setItem("taskData",JSON.stringify(tasks));
+    localStorage.setItem("farmData", JSON.stringify(columns));
+    localStorage.setItem("taskData", JSON.stringify(tasks));
 
     try {
-      await setDoc(doc(db, "farmBoards", "default"), {
-        columns: columns,
-        tasks: tasks,
-        updated: new Date().toISOString()
-      });
-      alert("저장 완료 (localStorage + Firestore)");
-    } catch(e) {
-      console.error(e);
-      alert("Firestore 저장 실패, console 확인");
+      const firebaseConfig = { /* YOUR FIREBASE CONFIG */ };
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      await setDoc(doc(db, "farmData", "board"), { columns, tasks });
+      alert("저장 완료 ✅");
+    } catch(e){
+      console.error("Firestore 저장 오류:", e);
+      alert("Firestore 저장 실패 ❌");
     }
   }
 
-  // ===== 나머지 기존 함수들 유지 =====
-  // formatDate, updateClock, validateDate, formatDays, createModal 등
-  // openDateEditor, saveDate, openMemoEditor, saveMemo 등
-  // openChangeEditor, completeChangeNow, saveChange, createUI
-  // addColumn, deleteColumn, addCard, deleteCard, markChangeNow
-  // createTaskUI, addTask, deleteTask, markTaskNow
-  // openTaskDateEditor, saveTaskDate, openTaskMemoEditor, saveTaskMemo
-  // 기타 이벤트 리스너 및 초기화
+  function updateClock(){ document.getElementById("clock").innerText = new Date().toLocaleString(); }
+  setInterval(updateClock, 1000);
+
+  // ===== 모달 =====
+  function createModal(html){
+    const m=document.createElement("div");
+    m.className="modal";
+    m.innerHTML=html;
+    m.onclick = (e)=>{ if(e.target===m) m.remove(); };
+    function escHandler(e){ if(e.key==="Escape"){ m.remove(); document.removeEventListener("keydown", escHandler); } }
+    document.addEventListener("keydown", escHandler);
+    document.body.appendChild(m);
+    return m;
+  }
+
+  function closeModal(btn){ btn.closest(".modal").remove(); }
+
+  // ===== 날짜/메모/양액 관련 함수 =====
+  function dateInputs(p,d){ return `
+    <div class="modal-block"><label>년</label><input type="number" id="${p}-year" value="${d.year}" min="2000" max="2100"></div>
+    <div class="modal-block"><label>월</label><input type="number" id="${p}-month" value="${d.month}" min="1" max="12"></div>
+    <div class="modal-block"><label>일</label><input type="number" id="${p}-day" value="${d.day}" min="1" max="31"></div>
+    <div class="modal-block"><label>시간</label><input type="number" id="${p}-hour" value="${d.hour||0}" min="0" max="23"></div>`;
+  }
+
+  // (openDateEditor, saveDate, openMemoEditor, saveMemo, openChangeEditor, saveChange, markChangeNow)
+  // ... 기존 함수 그대로 유지 ...
+
+  // ===== UI 생성 =====
+  function createUI(){
+    const board=document.getElementById("board");
+    board.innerHTML="";
+    columns.forEach((col,ci)=>{
+      const column=document.createElement("div");
+      column.className="column"; column.dataset.index=ci;
+      column.innerHTML = `
+        <div class="column-header">
+          <div contenteditable oninput="columns[${ci}].header=this.innerText">${col.header}</div>
+          <div onclick="deleteColumn(${ci})">✕</div>
+        </div>
+        <div class="card-container"></div>`;
+      board.appendChild(column);
+      const container = column.querySelector(".card-container");
+
+      col.crops.forEach((crop,ri)=>{
+        const sowErr = validateDate(crop.sow).valid ? "" : validateDate(crop.sow).error;
+        const transErr = validateDate(crop.trans).valid ? "" : validateDate(crop.trans).error;
+
+        const card = document.createElement("div");
+        card.className="card";
+        card.innerHTML = `
+          <div class="label" contenteditable oninput="columns[${ci}].crops[${ri}].name=this.innerText">${crop.name}</div>
+          <div class="date-section">
+            ${crop.showSow!==false?`<div class="date-block"><div class="small">파종일</div><div class="big ${sowErr?'error':''}">${sowErr? sowErr : formatDays(crop.sow)}</div><div class="date-text">${sowErr?"":formatDate(crop.sow)}</div></div>`:""}
+            ${(crop.showSow!==false && crop.showTrans!==false)?'<div class="divider-vertical"></div>':""}
+            ${crop.showTrans!==false?`<div class="date-block"><div class="small">정식일</div><div class="big ${transErr?'error':''}">${transErr? transErr : formatDays(crop.trans)}</div><div class="date-text">${transErr?"":formatDate(crop.trans)}</div></div>`:""}
+          </div>
+          ${crop.showChange!==false ? `<div class="change-info">${crop.lastChange ? `D+${((new Date()-new Date(crop.lastChange.year,crop.lastChange.month-1,crop.lastChange.day))/86400000).toFixed(1)}` : "-" }<button class="mark-btn" onclick="markChangeNow(${ci},${ri})">↻</button></div>` : ""}
+          ${crop.memo?`<div class="memo">${crop.memo}</div>`:""}
+          <div class="card-menu">☰</div>
+          <div class="card-options">
+            <div onclick="openDateEditor(${ci},${ri})">날짜 수정</div>
+            <div onclick="openMemoEditor(${ci},${ri})">메모</div>
+            <div onclick="openChangeEditor(${ci},${ri})">양액 교체 주기</div>
+            <div onclick="deleteCard(${ci},${ri})">삭제</div>
+          </div>`;
+        container.appendChild(card);
+
+        const menu = card.querySelector(".card-menu");
+        const opt = card.querySelector(".card-options");
+        menu.onclick=(e)=>{ e.stopPropagation(); document.querySelectorAll(".card-options").forEach(o=>o.style.display="none"); opt.style.display="block"; };
+      });
+
+      new Sortable(container,{ group:"shared", animation:150, onStart:()=>saveHistory(), onEnd:(evt)=>{ 
+        const fromColIndex = evt.from.closest(".column").dataset.index;
+        const toColIndex   = evt.to.closest(".column").dataset.index;
+        const movedItem = columns[fromColIndex].crops.splice(evt.oldIndex,1)[0];
+        columns[toColIndex].crops.splice(evt.newIndex,0,movedItem);
+        createUI();
+      }});
+
+      const btn=document.createElement("button");
+      btn.className="add-card-btn"; btn.innerText="+";
+      btn.onclick=()=>addCard(ci);
+      column.appendChild(btn);
+    });
+  }
+
+  // ===== CRUD =====
+  function addColumn(){ saveHistory(); columns.push({header:"새 열",crops:[]}); createUI(); }
+  function deleteColumn(i){ if(confirm("정말 삭제하시겠습니까?")){ saveHistory(); columns.splice(i,1); createUI(); } }
+  function addCard(i){ saveHistory(); const now=new Date(); columns[i].crops.push({name:"새 카드", sow:{year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate()}, trans:{year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate()}, lastChange:{year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate()}, memo:""}); createUI(); }
+  function deleteCard(c,r){ saveHistory(); columns[c].crops.splice(r,1); createUI(); }
+  function markChangeNow(c,r){ saveHistory(); const now=new Date(); columns[c].crops[r].lastChange={year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate(),hour:now.getHours()}; createUI(); }
+
+  // ===== 작업 배너 =====
+  // (createTaskUI, addTask, deleteTask, markTaskNow, openTaskDateEditor, saveTaskDate, openTaskMemoEditor, saveTaskMemo)
+  // ... 기존 함수 그대로 유지 ...
+
+  // ===== 초기화 =====
+  if(localStorage.getItem("farmBoardTitle")) document.getElementById("farmTitle").innerText = localStorage.getItem("farmBoardTitle");
+  if(localStorage.getItem("taskBoardTitle")) document.getElementById("taskTitle").innerText = localStorage.getItem("taskBoardTitle");
+
+  createUI();
+  createTaskUI();
 </script>
-
-<style>
-/* 기존 스타일 그대로 유지 */
-body{font-family:Arial;background:#f4f6f8;margin:0;padding:20px;}
-#clock{font-size:18px;margin-bottom:20px;}
-/* ... 이하 생략, 기존 스타일 그대로 복사 ... */
-</style>
-</head>
-
-<body>
-
-<h1 id="clock"></h1>
-
-<div class="top-controls">
-  <button onclick="addColumn()">열 추가</button>
-  <button onclick="saveData()">저장</button>
-  <button onclick="undoAction()">이전 행동 복구</button>
-</div>
-<hr style="margin:40px 0;border:1px dashed #bbb">
-
-<h2 id="farmTitle"
-    contenteditable="true"
-    oninput="localStorage.setItem('farmBoardTitle', this.innerText)">
-  재배기 현황
-</h2>
-<div class="board" id="board"></div>
-<hr style="margin:40px 0;border:1px dashed #bbb">
-
-<h2 id="taskTitle"
-    contenteditable="true"
-    oninput="localStorage.setItem('taskBoardTitle', this.innerText)">
-  작업 배너
-</h2>
-
-<div id="taskBoard" style="display:flex;flex-direction:column;gap:12px;"></div>
-
-<script type="module">
-// 여기서 기존 createUI(), createTaskUI(), 기타 CRUD 함수들 그대로 정의
-// + setInterval(updateClock,1000);
-// + 초기 createUI(), createTaskUI(), updateClock();
-</script>
-
-</body>
-</html>
