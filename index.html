@@ -52,13 +52,11 @@ body{font-family:Arial;background:#f4f6f8;margin:0;padding:20px;}
   gap:20px;
   position:relative;
 }
-
 .top-bar{
   display:flex;
   align-items:center;
   margin-bottom:20px;
 }
-
 .top-controls{
   margin-left:auto;
   display:flex;
@@ -66,41 +64,36 @@ body{font-family:Arial;background:#f4f6f8;margin:0;padding:20px;}
 }
 </style>
 </head>
-
 <body>
 
 <div class="top-bar">
   <h1 id="clock"></h1>
   <div class="top-controls">
     <button onclick="addColumn()">열 추가</button>
-    <button onclick="saveData()">저장</button>
+    <button onclick="saveData()">저장(Firestore)</button>
     <button onclick="undoAction()">이전 행동 복구</button>
   </div>
 </div>
 <hr style="margin:-5px 0;border:1px dashed #bbb">
 
-<h2 id="farmTitle"
-    contenteditable="true"
-    oninput="updateTitle()">
+<h2 id="farmTitle" contenteditable="true" oninput="localStorage.setItem('farmBoardTitle', this.innerText)">
   재배기 현황
 </h2>
 <div class="board" id="board"></div>
 <hr style="margin:0px 0;border:1px dashed #bbb">
 
-<h2 id="taskTitle"
-    contenteditable="true"
-    oninput="updateTitle()">
+<h2 id="taskTitle" contenteditable="true" oninput="localStorage.setItem('taskBoardTitle', this.innerText)">
   작업 배너
 </h2>
 <div id="taskBoard" style="display:flex;flex-direction:column;gap:12px;"></div>
 
+<!-- Firebase SDK -->
 <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js";
+import { getFirestore, collection, addDoc, doc, setDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-analytics.js";
 
-// ===== Firebase 초기화 =====
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics.js";
-
+// Firebase 설정
 const firebaseConfig = {
   apiKey: "AIzaSyAnfstiWWezjQY4YJ3YJae8tsTGb3s9F-k",
   authDomain: "spinachslave.firebaseapp.com",
@@ -121,66 +114,96 @@ let tasks = [];
 let historyStack = [];
 
 // ===== Firestore 불러오기 =====
-async function loadData() {
-  const docRef = doc(db, "farmData", "board");
-  const docSnap = await getDoc(docRef);
-  if(docSnap.exists()){
-    const data = docSnap.data();
-    columns = data.columns || [];
-    tasks = data.tasks || [];
-  } else {
-    columns = [];
-    tasks = [];
-  }
+async function loadData(){
+  // columns
+  const colSnap = await getDocs(collection(db,"columns"));
+  columns = [];
+  colSnap.forEach(doc => {columns.push(doc.data());});
+
+  // tasks
+  const taskSnap = await getDocs(collection(db,"tasks"));
+  tasks = [];
+  taskSnap.forEach(doc => {tasks.push(doc.data());});
+
   createUI();
   createTaskUI();
 }
 
-loadData();
+// ===== Firestore 저장 =====
+async function saveData(){
+  // columns
+  for(let i=0;i<columns.length;i++){
+    await setDoc(doc(db,"columns","col"+i), columns[i]);
+  }
+  // tasks
+  for(let i=0;i<tasks.length;i++){
+    await setDoc(doc(db,"tasks","task"+i), tasks[i]);
+  }
+  alert("Firestore 저장 완료");
+}
 
 // ===== 히스토리 =====
-function saveHistory(){
-  historyStack.push(JSON.stringify(columns));
-  if(historyStack.length>50) historyStack.shift();
+function saveHistory(){historyStack.push(JSON.stringify(columns));if(historyStack.length>50) historyStack.shift();}
+function undoAction(){if(historyStack.length===0){alert("되돌릴 작업이 없습니다.");return;}columns=JSON.parse(historyStack.pop());createUI();}
+
+// ===== 날짜/시간 =====
+function formatDate(d){if(!d) return "-";return `${d.year}.${String(d.month).padStart(2,"0")}.${String(d.day).padStart(2,"0")}`;}
+function updateClock(){document.getElementById("clock").innerText=new Date().toLocaleString();}
+function formatDays(date){if(!date) return "-";const diff=((new Date()-new Date(date.year,date.month-1,date.day,date.hour||0))/(1000*60*60*24)).toFixed(1);return diff+"일차";}
+
+// ===== UI 생성 =====
+function createUI(){
+  const board=document.getElementById("board");
+  board.innerHTML="";
+  columns.forEach((col,ci)=>{
+    const column=document.createElement("div");
+    column.className="column";
+    column.dataset.index=ci;
+    column.innerHTML=`<div class="column-header">
+      <div contenteditable oninput="columns[${ci}].header=this.innerText">${col.header}</div>
+      <div onclick="deleteColumn(${ci})">✕</div>
+    </div><div class="card-container"></div>`;
+    board.appendChild(column);
+    const container=column.querySelector(".card-container");
+    col.crops.forEach((crop,ri)=>{
+      const card=document.createElement("div"); card.className="card";
+      card.innerHTML=`<div class="label" contenteditable oninput="columns[${ci}].crops[${ri}].name=this.innerText">${crop.name}</div>
+      <div class="date-section">
+        <div class="date-block"><div class="small">파종일</div><div class="big">${formatDays(crop.sow)}</div><div class="date-text">${formatDate(crop.sow)}</div></div>
+        <div class="divider-vertical"></div>
+        <div class="date-block"><div class="small">정식일</div><div class="big">${formatDays(crop.trans)}</div><div class="date-text">${formatDate(crop.trans)}</div></div>
+      </div>`;
+      container.appendChild(card);
+    });
+    new Sortable(container,{group:"shared",animation:150,onStart:()=>saveHistory(),onEnd:(evt)=>{
+      const fromColIndex = evt.from.closest(".column").dataset.index;
+      const toColIndex   = evt.to.closest(".column").dataset.index;
+      const movedItem = columns[fromColIndex].crops.splice(evt.oldIndex,1)[0];
+      columns[toColIndex].crops.splice(evt.newIndex,0,movedItem);
+      createUI();
+    }});
+    const btn=document.createElement("button"); btn.className="add-card-btn"; btn.innerText="+"; btn.onclick=()=>addCard(ci); column.appendChild(btn);
+  });
 }
 
-function undoAction(){
-  if(historyStack.length===0){
-    alert("되돌릴 작업이 없습니다.");
-    return;
-  }
-  columns = JSON.parse(historyStack.pop());
-  createUI();
+function createTaskUI(){
+  const board=document.getElementById("taskBoard"); board.innerHTML="";
+  tasks.forEach((task,i)=>{
+    const card=document.createElement("div"); card.className="task-card";
+    card.innerHTML=`<div contenteditable oninput="tasks[${i}].name=this.innerText">${task.name}</div>`;
+    board.appendChild(card);
+  });
 }
 
-// ===== 공용 저장 =====
-async function saveData(){
-  try{
-    await setDoc(doc(db,"farmData","board"), {columns,tasks});
-    alert("Firestore에 저장 완료 ✅");
-  }catch(e){
-    console.error("Firestore 저장 오류:", e);
-    alert("저장 실패 ❌");
-  }
-}
+// ===== CRUD =====
+function addColumn(){saveHistory(); columns.push({header:"새 열",crops:[]}); createUI();}
+function deleteColumn(i){if(confirm("정말 삭제하시겠습니까?")){saveHistory(); columns.splice(i,1); createUI();}}
+function addCard(i){saveHistory(); const now=new Date(); columns[i].crops.push({name:"새 카드",sow:{year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate()},trans:{year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate()}}); createUI();}
 
-// ===== 제목 저장 =====
-function updateTitle(){
-  const farmTitle=document.getElementById("farmTitle").innerText;
-  const taskTitle=document.getElementById("taskTitle").innerText;
-  // 선택적으로 Firestore에 저장
-}
-
-// ===== 기존 코드 계속 =====
-function formatDate(d){ if(!d) return "-"; return `${d.year}.${String(d.month).padStart(2,"0")}.${String(d.day).padStart(2,"0")}`; }
-function updateClock(){ document.getElementById("clock").innerText=new Date().toLocaleString(); }
-function validateDate(d){ if(!d) return {valid:false,error:"값 없음"}; const y=new Date().getFullYear(); let err=[]; if(d.year<y-1||d.year>y+1) err.push("yy 오류"); if(d.month<1||d.month>12) err.push("mm 오류"); if(d.day<1||d.day>31) err.push("dd 오류"); return {valid:err.length===0,error:err.join(", ")}; }
-function formatDays(date){ if(!date) return "-"; const diff=((new Date()-new Date(date.year,date.month-1,date.day,date.hour||0))/(1000*60*60*24)).toFixed(1); return diff+"일차"; }
-
-// ===== 이하 모든 UI 생성, 모달, CRUD, 작업 배너 함수 등 기존 코드 그대로 =====
-// (여기서는 길이 때문에 생략했지만, 기존 스크립트 블록을 그대로 넣으면 됨)
-
+// ===== 초기화 =====
 setInterval(updateClock,1000);
+loadData();
+
 </script>
 </body>
 </html>
