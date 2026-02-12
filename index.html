@@ -103,6 +103,8 @@ body{font-family:Arial;background:#f4f6f8;margin:0;padding:20px;}
 // ===== 데이터 =====
 let columns = JSON.parse(localStorage.getItem("farmData")) || [];
 let tasks = JSON.parse(localStorage.getItem("taskData")) || [];
+window.columns = columns;
+window.tasks = tasks;
 let historyStack = [];
 
 
@@ -130,8 +132,6 @@ document.addEventListener("keydown",(e)=>{
 });
 
 // ===== 공용 =====
-import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
 async function saveData(){
   // 로컬Storage 저장은 유지해도 됨
   localStorage.setItem("farmData", JSON.stringify(columns));
@@ -790,27 +790,17 @@ updateClock();
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyAnfstiWWezjQY4YJ3YJae8tsTGb3s9F-k",
-    authDomain: "spinachslave.firebaseapp.com",
-    projectId: "spinachslave",
-    storageBucket: "spinachslave.firebasestorage.app",
-    messagingSenderId: "974550491647",
-    appId: "1:974550491647:web:f6359153646a7ffc9307ca",
-    measurementId: "G-5VNY8MXJ4S"
-  };
+  const firebaseConfig = { /* 기존 config 그대로 */ };
 
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
   console.log("🔥 Firebase 연결 완료");
 
-  // ===== 공용 saveData() =====
+  // 전역 saveData 연결
   window.saveData = async function() {
-    // 1️⃣ 로컬Storage 저장
     localStorage.setItem("farmData", JSON.stringify(columns));
     localStorage.setItem("taskData", JSON.stringify(tasks));
 
-    // 2️⃣ Firestore 저장
     try {
       await setDoc(doc(db, "farmData", "board"), {
         columns: columns,
@@ -827,6 +817,7 @@ updateClock();
 
 </body>
 </html>
+
 
 
 
