@@ -4,9 +4,8 @@
 <meta charset="UTF-8">
 <title>재배 보드</title>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-
 <style>
-/* ... 기존 CSS 그대로 유지 ... */
+/* 기존 CSS 그대로 유지 */
 body{font-family:Arial;background:#f4f6f8;margin:0;padding:20px;}
 #clock{font-size:18px;margin:0;}
 .top-controls{display:flex;gap:10px;}
@@ -43,32 +42,11 @@ body{font-family:Arial;background:#f4f6f8;margin:0;padding:20px;}
 .save-btn{background:#6c8fc7;color:white;padding:8px 16px;border:none;border-radius:10px;}
 .cancel-btn{background:#ccc;padding:8px 16px;border:none;border-radius:10px;}
 .mark-btn{background:#28a745;color:white;padding:4px 8px;border:none;border-radius:10px;font-size:11px;}
-.task-card{
-  background:white;
-  padding:14px 20px;
-  border-radius:18px;
-  box-shadow:0 2px 6px rgba(0,0,0,0.1);
-  display:flex;
-  align-items:center;
-  gap:20px;
-  position:relative;
-}
-
-.top-bar{
-  display:flex;
-  align-items:center;
-  margin-bottom:20px;
-}
-
-.top-controls{
-  margin-left:auto;
-  display:flex;
-  gap:10px;
-}
-
+.task-card{background:white;padding:14px 20px;border-radius:18px;box-shadow:0 2px 6px rgba(0,0,0,0.1);display:flex;align-items:center;gap:20px;position:relative;}
+.top-bar{display:flex;align-items:center;margin-bottom:20px;}
+.top-controls{margin-left:auto;display:flex;gap:10px;}
 </style>
 </head>
-
 <body>
 
 <div class="top-bar">
@@ -89,84 +67,70 @@ body{font-family:Arial;background:#f4f6f8;margin:0;padding:20px;}
 <div id="taskBoard" style="display:flex;flex-direction:column;gap:12px;"></div>
 
 <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+// ===== Firebase 설정 =====
+const firebaseConfig = {
+  apiKey: "AIzaSyAnfstiWWezjQY4YJ3YJae8tsTGb3s9F-k",
+  authDomain: "spinachslave.firebaseapp.com",
+  projectId: "spinachslave",
+  storageBucket: "spinachslave.appspot.com",
+  messagingSenderId: "974550491647",
+  appId: "1:974550491647:web:f6359153646a7ffc9307ca",
+  measurementId: "G-5VNY8MXJ4S"
+};
 
-  // ===== Firebase 설정 =====
-  const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "SENDER_ID",
-    appId: "APP_ID"
-  };
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+console.log("🔥 Firebase 연결 완료");
 
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  console.log("🔥 Firebase 연결 완료");
+// ===== 데이터 =====
+let columns = JSON.parse(localStorage.getItem("farmData")) || [];
+let tasks = JSON.parse(localStorage.getItem("taskData")) || [];
+let historyStack = [];
 
-  // ===== 데이터 =====
-  let columns = JSON.parse(localStorage.getItem("farmData")) || [];
-  let tasks = JSON.parse(localStorage.getItem("taskData")) || [];
-  let historyStack = [];
+// ===== 히스토리 =====
+function saveHistory(){ historyStack.push(JSON.stringify(columns)); if(historyStack.length>50) historyStack.shift(); }
+function undoAction(){ if(historyStack.length===0){ alert("되돌릴 작업이 없습니다."); return; } columns = JSON.parse(historyStack.pop()); createUI(); }
+document.addEventListener("keydown",(e)=>{ if(e.ctrlKey && e.key==="z"){ e.preventDefault(); undoAction(); } });
 
-  // ===== 히스토리 =====
-  function saveHistory(){
-    historyStack.push(JSON.stringify(columns));
-    if(historyStack.length>50) historyStack.shift();
+// ===== Firestore 저장 =====
+window.saveData = async function(){
+  localStorage.setItem("farmData", JSON.stringify(columns));
+  localStorage.setItem("taskData", JSON.stringify(tasks));
+  try{
+    await setDoc(doc(db, "farmData", "board"), { columns, tasks });
+    alert("✅ Firestore 저장 완료");
+  }catch(e){
+    console.error("Firestore 저장 오류:", e);
+    alert("❌ Firestore 저장 실패");
   }
-
-  function undoAction(){
-    if(historyStack.length===0){ alert("되돌릴 작업이 없습니다."); return; }
-    columns = JSON.parse(historyStack.pop());
-    createUI();
-  }
-
-  document.addEventListener("keydown",(e)=>{
-    if(e.ctrlKey && e.key==="z"){ e.preventDefault(); undoAction(); }
-  });
-
-  // ===== 공용 저장 =====
-  window.saveData = async function(){
-    // 로컬Storage 백업
-    localStorage.setItem("farmData", JSON.stringify(columns));
-    localStorage.setItem("taskData", JSON.stringify(tasks));
-
-    try{
-      await setDoc(doc(db, "farmData", "board"), { columns, tasks });
-      alert("Firestore 저장 완료 ✅");
-    } catch(e){
-      console.error("Firestore 저장 오류:", e);
-      alert("Firestore 저장 실패 ❌");
-    }
-  };
-
-</script>
-
-<!-- 기존 UI/모달/날짜/메모/양액/작업 배너 코드 그대로 유지 -->
-<script>
-// ... createUI(), addColumn(), addCard(), deleteCard(), openDateEditor(), saveDate(), 
-// openMemoEditor(), saveMemo(), openChangeEditor(), saveChange(), createTaskUI(), addTask(), 
-// markTaskNow(), openTaskDateEditor(), saveTaskDate(), openTaskMemoEditor(), saveTaskMemo() 
-// 등 기존 모든 함수 그대로 유지 ...
+};
 </script>
 
 <script>
-  // 상단 제목 복원
-  const savedTitle = localStorage.getItem("farmBoardTitle");
-  if(savedTitle) document.getElementById("farmTitle").innerText = savedTitle;
+// ==========================
+// 여기에 기존 createUI(), addColumn(), addCard(), deleteCard(), 
+// openDateEditor(), saveDate(), openMemoEditor(), saveMemo(), 
+// openChangeEditor(), saveChange(), createTaskUI(), addTask(), 
+// markTaskNow(), openTaskDateEditor(), saveTaskDate(), 
+// openTaskMemoEditor(), saveTaskMemo() 등 기존 함수 그대로 넣기
+// ==========================
+</script>
 
-  const savedTaskTitle = localStorage.getItem("taskBoardTitle");
-  if(savedTaskTitle) document.getElementById("taskTitle").innerText = savedTaskTitle;
+<script>
+const savedTitle = localStorage.getItem("farmBoardTitle");
+if(savedTitle) document.getElementById("farmTitle").innerText = savedTitle;
+const savedTaskTitle = localStorage.getItem("taskBoardTitle");
+if(savedTaskTitle) document.getElementById("taskTitle").innerText = savedTaskTitle;
 
-  function updateClock(){ document.getElementById("clock").innerText=new Date().toLocaleString(); }
-  setInterval(updateClock,1000);
+function updateClock(){ document.getElementById("clock").innerText=new Date().toLocaleString(); }
+setInterval(updateClock,1000);
 
-  createUI();
-  createTaskUI();
-  updateClock();
+createUI();
+createTaskUI();
+updateClock();
 </script>
 
 </body>
