@@ -4,6 +4,114 @@
 <meta charset="UTF-8">
 <title>재배 보드</title>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<!-- Firebase SDK -->
+<script type="module">
+  // Import Firebase modules
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-analytics.js";
+  import { getFirestore, collection, getDocs, doc, setDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js";
+
+  // Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyAnfstiWWezjQY4YJ3YJae8tsTGb3s9F-k",
+    authDomain: "spinachslave.firebaseapp.com",
+    projectId: "spinachslave",
+    storageBucket: "spinachslave.firebasestorage.app",
+    messagingSenderId: "974550491647",
+    appId: "1:974550491647:web:f6359153646a7ffc9307ca",
+    measurementId: "G-5VNY8MXJ4S"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  const db = getFirestore(app);
+
+  // Firestore collections
+  const columnsCol = collection(db, "columns");
+  const tasksCol   = collection(db, "tasks");
+
+  // ===== 데이터 =====
+  let columns = [];
+  let tasks = [];
+  let historyStack = [];
+
+  // ===== Firestore 연동 =====
+  async function loadData() {
+    columns = [];
+    tasks = [];
+    // Load columns
+    const colSnap = await getDocs(columnsCol);
+    colSnap.forEach(docSnap => {
+      const data = docSnap.data();
+      columns.push({ id: docSnap.id, ...data });
+    });
+    // Load tasks
+    const taskSnap = await getDocs(tasksCol);
+    taskSnap.forEach(docSnap => {
+      const data = docSnap.data();
+      tasks.push({ id: docSnap.id, ...data });
+    });
+    createUI();
+    createTaskUI();
+  }
+
+  async function saveColumn(index) {
+    const col = columns[index];
+    if (!col.id) {
+      const newDocRef = doc(columnsCol);
+      col.id = newDocRef.id;
+    }
+    await setDoc(doc(columnsCol, col.id), col);
+  }
+
+  async function saveTask(index) {
+    const task = tasks[index];
+    if (!task.id) {
+      const newDocRef = doc(tasksCol);
+      task.id = newDocRef.id;
+    }
+    await setDoc(doc(tasksCol, task.id), task);
+  }
+
+  async function deleteColumnFromDB(index) {
+    const col = columns[index];
+    if (col.id) {
+      await deleteDoc(doc(columnsCol, col.id));
+    }
+  }
+
+  async function deleteTaskFromDB(index) {
+    const task = tasks[index];
+    if (task.id) {
+      await deleteDoc(doc(tasksCol, task.id));
+    }
+  }
+
+  // ===== 히스토리 =====
+  function saveHistory(){
+    historyStack.push(JSON.stringify(columns));
+    if(historyStack.length>50) historyStack.shift();
+  }
+
+  function undoAction(){
+    if(historyStack.length===0){
+      alert("되돌릴 작업이 없습니다.");
+      return;
+    }
+    columns = JSON.parse(historyStack.pop());
+    createUI();
+    columns.forEach((_,i)=>saveColumn(i));
+  }
+
+  document.addEventListener("keydown",(e)=>{
+    if(e.ctrlKey && e.key==="z"){
+      e.preventDefault();
+      undoAction();
+    }
+  });
+
+</script>
 
 <style>
 body{font-family:Arial;background:#f4f6f8;margin:0;padding:20px;}
@@ -42,167 +150,262 @@ body{font-family:Arial;background:#f4f6f8;margin:0;padding:20px;}
 .save-btn{background:#6c8fc7;color:white;padding:8px 16px;border:none;border-radius:10px;}
 .cancel-btn{background:#ccc;padding:8px 16px;border:none;border-radius:10px;}
 .mark-btn{background:#28a745;color:white;padding:4px 8px;border:none;border-radius:10px;font-size:11px;}
-.task-card{
-  background:white;
-  padding:14px 20px;
-  border-radius:18px;
-  box-shadow:0 2px 6px rgba(0,0,0,0.1);
-  display:flex;
-  align-items:center;
-  gap:20px;
-  position:relative;
-}
-.top-bar{
-  display:flex;
-  align-items:center;
-  margin-bottom:20px;
-}
-.top-controls{
-  margin-left:auto;
-  display:flex;
-  gap:10px;
-}
+.task-card{background:white;padding:14px 20px;border-radius:18px;box-shadow:0 2px 6px rgba(0,0,0,0.1);display:flex;align-items:center;gap:20px;position:relative;}
+.top-bar{display:flex;align-items:center;margin-bottom:20px;}
+.top-controls{margin-left:auto;display:flex;gap:10px;}
 </style>
+
 </head>
 <body>
-
 <div class="top-bar">
   <h1 id="clock"></h1>
   <div class="top-controls">
     <button onclick="addColumn()">열 추가</button>
-    <button onclick="saveData()">저장(Firestore)</button>
+    <button onclick="saveAll()">저장</button>
     <button onclick="undoAction()">이전 행동 복구</button>
   </div>
 </div>
 <hr style="margin:-5px 0;border:1px dashed #bbb">
-
-<h2 id="farmTitle" contenteditable="true" oninput="localStorage.setItem('farmBoardTitle', this.innerText)">
-  재배기 현황
-</h2>
+<h2 id="farmTitle" contenteditable="true" oninput="updateTitle(this.innerText)">재배기 현황</h2>
 <div class="board" id="board"></div>
 <hr style="margin:0px 0;border:1px dashed #bbb">
-
-<h2 id="taskTitle" contenteditable="true" oninput="localStorage.setItem('taskBoardTitle', this.innerText)">
-  작업 배너
-</h2>
+<h2 id="taskTitle" contenteditable="true" oninput="updateTaskTitle(this.innerText)">작업 배너</h2>
 <div id="taskBoard" style="display:flex;flex-direction:column;gap:12px;"></div>
 
-<!-- Firebase SDK -->
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js";
-import { getFirestore, collection, addDoc, doc, setDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-analytics.js";
+  // ===== CRUD 통합 =====
+  async function saveAll() {
+    for(let i=0;i<columns.length;i++) await saveColumn(i);
+    for(let i=0;i<tasks.length;i++) await saveTask(i);
+    alert("Firestore 저장 완료");
+  }
 
-// Firebase 설정
-const firebaseConfig = {
-  apiKey: "AIzaSyAnfstiWWezjQY4YJ3YJae8tsTGb3s9F-k",
-  authDomain: "spinachslave.firebaseapp.com",
-  projectId: "spinachslave",
-  storageBucket: "spinachslave.firebasestorage.app",
-  messagingSenderId: "974550491647",
-  appId: "1:974550491647:web:f6359153646a7ffc9307ca",
-  measurementId: "G-5VNY8MXJ4S"
-};
+  function updateTitle(txt){
+    // optional: farmBoardTitle도 Firestore에 저장 가능
+  }
+  function updateTaskTitle(txt){
+    // optional: taskBoardTitle도 Firestore에 저장 가능
+  }
 
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-const db = getFirestore(app);
+function createTaskUI(){
 
-// ===== 데이터 =====
-let columns = [];
-let tasks = [];
-let historyStack = [];
+  const board=document.getElementById("taskBoard");
+  board.innerHTML="";
 
-// ===== Firestore 불러오기 =====
-async function loadData(){
-  // columns
-  const colSnap = await getDocs(collection(db,"columns"));
-  columns = [];
-  colSnap.forEach(doc => {columns.push(doc.data());});
+  tasks.forEach((task,i)=>{
+let diffDays=0;
+let diffText="-";
+let textStyle="";
 
-  // tasks
-  const taskSnap = await getDocs(collection(db,"tasks"));
-  tasks = [];
-  taskSnap.forEach(doc => {tasks.push(doc.data());});
+if(task.start){
+  const startDate=new Date(
+    task.start.year,
+    task.start.month-1,
+    task.start.day,
+    task.start.hour||0
+  );
 
-  createUI();
+  const now=new Date();
+
+  if(startDate>now){
+    diffText="날짜 오류";
+    textStyle="color:red;font-weight:bold;";
+  }else{
+
+    diffDays=(now-startDate)/(1000*60*60*24);
+    diffText=`D+${diffDays.toFixed(1)}`;
+
+    if(diffDays>=60){
+      textStyle="color:red;font-weight:bold;text-decoration:underline;text-decoration-thickness:3px;";
+    }else if(diffDays>=30){
+      textStyle="color:orange;font-weight:bold;";
+    }
+  }
+}
+
+    const card=document.createElement("div");
+    card.className="task-card";
+
+    card.innerHTML=`
+      <div contenteditable
+        oninput="tasks[${i}].name=this.innerText"
+        style="font-weight:bold;min-width:120px;">
+        ${task.name}
+      </div>
+
+<div style="display:flex;align-items:center;gap:8px;">
+
+<div style="font-size:18px;${textStyle}">
+  ${diffText}
+</div>
+
+
+  <button class="mark-btn"
+    onclick="markTaskNow(${i})">↻</button>
+
+</div>
+
+<div style="opacity:0.4;">|</div>
+
+<div style="flex:1;font-size:14px;">
+  ${task.memo||""}
+</div>
+
+
+      <div class="card-menu">☰</div>
+      <div class="card-options">
+        <div onclick="openTaskDateEditor(${i})">날짜 수정</div>
+        <div onclick="openTaskMemoEditor(${i})">메모 수정</div>
+        <div onclick="deleteTask(${i})">삭제</div>
+      </div>
+    `;
+
+    const menu=card.querySelector(".card-menu");
+    const opt=card.querySelector(".card-options");
+
+    menu.onclick=(e)=>{
+      e.stopPropagation();
+      document.querySelectorAll(".card-options").forEach(o=>o.style.display="none");
+      opt.style.display="block";
+    };
+
+    board.appendChild(card);
+  });
+// 재배기 현황과 동일한 스타일의 + 버튼
+const btn=document.createElement("button");
+btn.className="add-card-btn";
+btn.innerText="+";
+btn.onclick=addTask;
+
+board.appendChild(btn);
+
+new Sortable(board,{
+  animation:150,
+  onEnd:(evt)=>{
+    const moved = tasks.splice(evt.oldIndex,1)[0];
+    tasks.splice(evt.newIndex,0,moved);
+    createTaskUI();
+  }
+});
+
+}
+
+
+function deleteTaskColumn(i){
+  taskColumns.splice(i,1);
   createTaskUI();
 }
 
-// ===== Firestore 저장 =====
-async function saveData(){
-  // columns
-  for(let i=0;i<columns.length;i++){
-    await setDoc(doc(db,"columns","col"+i), columns[i]);
-  }
-  // tasks
-  for(let i=0;i<tasks.length;i++){
-    await setDoc(doc(db,"tasks","task"+i), tasks[i]);
-  }
-  alert("Firestore 저장 완료");
-}
+function addTask(){
+  const now=new Date();
 
-// ===== 히스토리 =====
-function saveHistory(){historyStack.push(JSON.stringify(columns));if(historyStack.length>50) historyStack.shift();}
-function undoAction(){if(historyStack.length===0){alert("되돌릴 작업이 없습니다.");return;}columns=JSON.parse(historyStack.pop());createUI();}
-
-// ===== 날짜/시간 =====
-function formatDate(d){if(!d) return "-";return `${d.year}.${String(d.month).padStart(2,"0")}.${String(d.day).padStart(2,"0")}`;}
-function updateClock(){document.getElementById("clock").innerText=new Date().toLocaleString();}
-function formatDays(date){if(!date) return "-";const diff=((new Date()-new Date(date.year,date.month-1,date.day,date.hour||0))/(1000*60*60*24)).toFixed(1);return diff+"일차";}
-
-// ===== UI 생성 =====
-function createUI(){
-  const board=document.getElementById("board");
-  board.innerHTML="";
-  columns.forEach((col,ci)=>{
-    const column=document.createElement("div");
-    column.className="column";
-    column.dataset.index=ci;
-    column.innerHTML=`<div class="column-header">
-      <div contenteditable oninput="columns[${ci}].header=this.innerText">${col.header}</div>
-      <div onclick="deleteColumn(${ci})">✕</div>
-    </div><div class="card-container"></div>`;
-    board.appendChild(column);
-    const container=column.querySelector(".card-container");
-    col.crops.forEach((crop,ri)=>{
-      const card=document.createElement("div"); card.className="card";
-      card.innerHTML=`<div class="label" contenteditable oninput="columns[${ci}].crops[${ri}].name=this.innerText">${crop.name}</div>
-      <div class="date-section">
-        <div class="date-block"><div class="small">파종일</div><div class="big">${formatDays(crop.sow)}</div><div class="date-text">${formatDate(crop.sow)}</div></div>
-        <div class="divider-vertical"></div>
-        <div class="date-block"><div class="small">정식일</div><div class="big">${formatDays(crop.trans)}</div><div class="date-text">${formatDate(crop.trans)}</div></div>
-      </div>`;
-      container.appendChild(card);
-    });
-    new Sortable(container,{group:"shared",animation:150,onStart:()=>saveHistory(),onEnd:(evt)=>{
-      const fromColIndex = evt.from.closest(".column").dataset.index;
-      const toColIndex   = evt.to.closest(".column").dataset.index;
-      const movedItem = columns[fromColIndex].crops.splice(evt.oldIndex,1)[0];
-      columns[toColIndex].crops.splice(evt.newIndex,0,movedItem);
-      createUI();
-    }});
-    const btn=document.createElement("button"); btn.className="add-card-btn"; btn.innerText="+"; btn.onclick=()=>addCard(ci); column.appendChild(btn);
+  tasks.push({
+    name:"새 작업",
+    start:{
+      year:now.getFullYear(),
+      month:now.getMonth()+1,
+      day:now.getDate(),
+      hour:now.getHours()
+    },
+    memo:""
   });
+
+  createTaskUI();
 }
 
-function createTaskUI(){
-  const board=document.getElementById("taskBoard"); board.innerHTML="";
-  tasks.forEach((task,i)=>{
-    const card=document.createElement("div"); card.className="task-card";
-    card.innerHTML=`<div contenteditable oninput="tasks[${i}].name=this.innerText">${task.name}</div>`;
-    board.appendChild(card);
-  });
+
+function deleteTask(i){
+  tasks.splice(i,1);
+  createTaskUI();
 }
 
-// ===== CRUD =====
-function addColumn(){saveHistory(); columns.push({header:"새 열",crops:[]}); createUI();}
-function deleteColumn(i){if(confirm("정말 삭제하시겠습니까?")){saveHistory(); columns.splice(i,1); createUI();}}
-function addCard(i){saveHistory(); const now=new Date(); columns[i].crops.push({name:"새 카드",sow:{year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate()},trans:{year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate()}}); createUI();}
 
-// ===== 초기화 =====
+function markTaskNow(i){
+  const now=new Date();
+  tasks[i].start={
+    year:now.getFullYear(),
+    month:now.getMonth()+1,
+    day:now.getDate(),
+    hour:now.getHours()
+  };
+  createTaskUI();
+}
+
+
+function openTaskDateEditor(i){
+  const task=tasks[i];
+
+  createModal(`
+    <div class="modal-content">
+      <div>작업 시작일</div>
+      <div class="modal-fields">
+        ${dateInputs("task",task.start)}
+      </div>
+      <div class="modal-buttons">
+        <button class="cancel-btn" onclick="closeModal(this)">취소</button>
+        <button class="save-btn" onclick="saveTaskDate(${i},this)">저장</button>
+      </div>
+    </div>
+  `);
+}
+
+function saveTaskDate(i,btn){
+  const m=btn.closest(".modal");
+
+  tasks[i].start={
+    year:+m.querySelector("#task-year").value,
+    month:+m.querySelector("#task-month").value,
+    day:+m.querySelector("#task-day").value,
+    hour:+m.querySelector("#task-hour").value
+  };
+
+  m.remove();
+  createTaskUI();
+}
+
+function openTaskMemoEditor(i){
+  const task=tasks[i];
+
+  createModal(`
+    <div class="modal-content">
+      <textarea id="taskMemo" style="height:100px">${task.memo||""}</textarea>
+      <div class="modal-buttons">
+        <button class="cancel-btn" onclick="closeModal(this)">취소</button>
+        <button class="save-btn" onclick="saveTaskMemo(${i},this)">저장</button>
+      </div>
+    </div>
+  `);
+}
+
+function saveTaskMemo(i,btn){
+  tasks[i].memo=
+    btn.closest(".modal").querySelector("#taskMemo").value;
+
+  btn.closest(".modal").remove();
+  createTaskUI();
+}
+
+// ===== 기타 =====
+document.addEventListener("click",(e)=>{
+  if(!e.target.closest(".card"))
+    document.querySelectorAll(".card-options").forEach(o=>o.style.display="none");
+});
+
+// 상단 제목 불러오기
+const savedTitle = localStorage.getItem("farmBoardTitle");
+if(savedTitle){
+  document.getElementById("farmTitle").innerText = savedTitle;
+}
+// 작업 배너 제목 불러오기
+const savedTaskTitle = localStorage.getItem("taskBoardTitle");
+if(savedTaskTitle){
+  document.getElementById("taskTitle").innerText = savedTaskTitle;
+}
 setInterval(updateClock,1000);
-loadData();
+createUI();
+createTaskUI();
+updateClock();
+
 
 </script>
 </body>
