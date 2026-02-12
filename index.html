@@ -772,5 +772,27 @@ updateClock();
 
 
 </script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAnfstiWWezjQY4YJ3YJae8tsTGb3s9F-k",
+    authDomain: "spinachslave.firebaseapp.com",
+    projectId: "spinachslave",
+    storageBucket: "spinachslave.firebasestorage.app",
+    messagingSenderId: "974550491647",
+    appId: "1:974550491647:web:f6359153646a7ffc9307ca",
+    measurementId: "G-5VNY8MXJ4S"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  console.log("🔥 Firebase 연결 완료");
+</script>
+
 </body>
 </html>
+
+
